@@ -26,6 +26,7 @@ class NHL_Team:
         self.category = streak_category
 
 
+# Determining if a matchup should be bet given teams and their streak category
 def system_matchup(Away_team, Home_team):
     if Away_team.category == "Losing" and Home_team.category == "Winning":
         return 2, Away_team.name
