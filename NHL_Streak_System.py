@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import datetime
 import os
+import sys
 
 # Script for determining which games of the day fit Prof MJ (David-MJ) NHL streak system
 # System: Bet on team with losing streak >= 1 playing team with winning streak >= 4
@@ -11,8 +12,9 @@ import os
 __author__ = ["rssawyer"]
 
 # Global variables that can be fine-tuned
-LOSING_STREAK_MINIMUM = 1
-WINNING_STREAK_MINIMUM = 4
+LOSING_STREAK_MINIMUM = 2
+WINNING_STREAK_MINIMUM = 2
+MINIMUM_ODDS = 2.2
 WRITING = True
 OUTPUT_FILENAME = "NHL-David-MJ-Streak-System.csv"
 PRINTING = True
@@ -72,7 +74,8 @@ def map_name_standings_to_matchup(name):
                       "Calgary":"Flames",
                       "Los Angeles":"Kings",
                       "Vancouver":"Canucks",
-                      "Arizona":"Coyotes"}
+                      "Arizona":"Coyotes",
+					  "Vegas":"Golden Knights"}
     try:
         mapped_name = NHL_dictionary[name]
     except KeyError:
@@ -82,7 +85,7 @@ def map_name_standings_to_matchup(name):
 
 # Using global streak minimums to determine team's streak category from ESPN Standings table (e.g. Won 5)
 def convert_word_category(cell_text):
-    if cell_text[0] == "L" and int(cell_text.split(" ")[1] >= LOSING_STREAK_MINIMUM):
+    if cell_text[0] == "L" and int(cell_text.split(" ")[1]) >= LOSING_STREAK_MINIMUM:
         category = "Losing"
     elif cell_text[0] == "W" and int(cell_text.split(" ")[1]) >= WINNING_STREAK_MINIMUM:
         category = "Winning"
@@ -134,11 +137,30 @@ def convert_game_to_string(html_game, team_data):
         return "N,N,N,N,0"
 
 
+def calculate_payouts(home_moneyline):
+    if home_moneyline < 0:
+        home_payout = 100 / abs(home_moneyline)
+        away_payout = 1 / home_payout - 0.15
+    else:
+        home_payout = home_moneyline / 100
+        away_payout = 1 / home_payout - 0.15
+    return home_payout + 1, away_payout + 1
+
+
 # Uses predetermined betting code (0 = None, 1 = Home is losing streak, 2 = Away is losing streak)
 def actionable(game_string):
     split = game_string.split(",")
-    if int(split[-1]) > 0:
-        return True
+    try:
+        home_payout, away_payout = calculate_payouts(int(split[-3]))
+        if int(split[-1]) == 1 and home_payout > MINIMUM_ODDS:
+            return True
+        elif int(split[-1]) == 2 and away_payout > MINIMUM_ODDS:
+            return True
+        else:
+            return False
+    except ValueError:
+        return False
+
 
 
 # Gets today's matchups (and lines) from ESPN and returns actionable games
@@ -165,9 +187,13 @@ def get_matchup_data(team_data, sport="nhl"):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2:
+        LOSING_STREAK_MINIMUM = sys.argv[1]
+        WINNING_STREAK_MINIMUM = sys.argv[2]
+    print("Using %d losing streak and %d winning streak:" % (LOSING_STREAK_MINIMUM, WINNING_STREAK_MINIMUM))
     team_info = get_team_streak_data(sport=SPORT)
-    if len(team_info.keys()) != 30:
-        print "Number of teams incorrect"
+    if len(team_info.keys()) != 31:
+        print("Number of teams incorrect")
     bet_games = get_matchup_data(team_info, sport=SPORT)
 
     if WRITING:
@@ -184,7 +210,7 @@ if __name__ == "__main__":
 
     if PRINTING:
         if len(bet_games) < 1:
-            print "No Games Actionable"
+            print("No Games Actionable")
         else:
             for game in bet_games:
-                print "Bet Game: %s" % game
+                print("Bet Game: %s" % game)
